@@ -1,4 +1,4 @@
-# git-auto-commit
+# git-ai-commit
 
 A CLI tool to automate git commit and push using a React Terminal interface.
 
@@ -15,7 +15,7 @@ A CLI tool to automate git commit and push using a React Terminal interface.
 
 ```bash
 # Install globally
-npm install -g git-auto-commit
+npm install -g git-ai-commit
 
 # Set required environment variables
 export OPENAI_API_KEY="your-openai-api-key"
@@ -27,7 +27,7 @@ export GITHUB_TOKEN="your-github-token" # Optional, for PR detection
 Navigate to any Git repository and run:
 
 ```bash
-git-auto-commit commit
+git-ai-commit commit
 ```
 
 The interactive terminal UI will guide you through:
@@ -59,8 +59,8 @@ You can set these in your shell profile or use a tool like `direnv` to manage th
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/yourusername/git-auto-commit.git
-cd git-auto-commit
+git clone https://github.com/yourusername/git-ai-commit.git
+cd git-ai-commit
 npm install
 ```
 
