@@ -10,6 +10,11 @@ on:
         required: true
         default: "patch"
 
+# Add permissions needed for the workflow
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
@@ -17,7 +22,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -35,8 +39,8 @@ jobs:
       - name: Version bump (if workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           npm version ${{ github.event.inputs.version }}
 
       - name: Publish to npm
@@ -47,5 +51,7 @@ jobs:
       - name: Push version changes (if workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          git push https://${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref }}
-          git push https://${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git --tags
+          git push origin HEAD:${GITHUB_REF}
+          git push origin --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
