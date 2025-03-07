@@ -108,19 +108,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 Made with ❤️ by [Your Name]
-
-```
-
-This README provides:
-
-1. A clear description of what the tool does
-2. Installation and usage instructions
-3. Required environment variables
-4. Development setup
-5. How the tool works
-6. Contributing guidelines
-7. License information
-8. Acknowledgments
-
-You should replace the placeholder image URL with an actual screenshot or GIF of your tool in action once you have one, and update the GitHub repository URL and your name in the appropriate places.
-```
