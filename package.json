@@ -1,6 +1,6 @@
 {
   "name": "git-ai-tool",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A CLI tool to automate git commit and push using React Terminal",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
