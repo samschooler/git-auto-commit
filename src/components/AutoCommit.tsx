@@ -183,6 +183,7 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
 
       // If there are unstaged changes but no staged changes, prompt to stage them
       if (unstagedChanges.length > 0) {
+        console.log(chalk.yellow("⚠️ Unstaged changes detected:"));
         setStep("stageChanges");
         return;
       }
