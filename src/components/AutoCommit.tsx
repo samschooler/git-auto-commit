@@ -106,6 +106,7 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
     | "generating"
     | "confirmCommit"
     | "confirmPush"
+    | "confirmPull"
     | "pushing"
     | "complete"
     | "error"
@@ -327,6 +328,20 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
           }
         } catch (err) {
           const errorMessage = (err as Error).message;
+
+          // Check if the error is about rejected push due to remote changes
+          if (
+            errorMessage.includes("rejected") &&
+            (errorMessage.includes("fetch first") ||
+              errorMessage.includes("non-fast-forward") ||
+              errorMessage.includes(
+                "Updates were rejected because the remote contains work"
+              ))
+          ) {
+            setStep("confirmPull");
+            return;
+          }
+
           setError(`Failed to push: ${errorMessage}`);
           reportStep("Push failed", errorMessage);
           setStep("error");
@@ -342,6 +357,45 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
       }
     } else {
       reportStep("Push skipped", "Changes committed but not pushed");
+      setStep("complete");
+      onFinish();
+    }
+  };
+
+  const handlePull = (confirm: boolean) => {
+    if (confirm) {
+      try {
+        // Pull changes from remote
+        try {
+          execCommand(`git pull --rebase origin ${branchName}`);
+          reportStep("Pulled changes", `Branch: ${branchName}`);
+
+          // Try pushing again
+          execCommand(`git push origin ${branchName}`);
+          reportStep("Pushed changes", `Branch: ${branchName}`);
+
+          // Check for PR URL
+          const pullRequestUrl = checkPullRequestStatus(repoUrl, branchName);
+          if (pullRequestUrl) {
+            setPrUrl(pullRequestUrl);
+            reportStep("Pull request", pullRequestUrl);
+          }
+        } catch (err) {
+          const errorMessage = (err as Error).message;
+          setError(`Failed during pull/push: ${errorMessage}`);
+          reportStep("Pull/Push failed", errorMessage);
+          setStep("error");
+          return;
+        }
+
+        setStep("complete");
+        onFinish();
+      } catch (err) {
+        setError(`Failed: ${(err as Error).message}`);
+        setStep("error");
+      }
+    } else {
+      reportStep("Pull skipped", "Changes committed but not pushed");
       setStep("complete");
       onFinish();
     }
@@ -466,6 +520,23 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
       return (
         <Box>
           <Text color="red">❌ Error: {error}</Text>
+        </Box>
+      );
+
+    case "confirmPull":
+      return (
+        <Box flexDirection="column">
+          <Text color="yellow">
+            ⚠️ Push rejected: Remote has changes you don't have locally
+          </Text>
+          <Text>Do you want to pull changes and try pushing again?</Text>
+          <SelectInput
+            items={[
+              { label: "Yes, pull and push", value: true },
+              { label: "No, skip pushing", value: false },
+            ]}
+            onSelect={({ value }: { value: boolean }) => handlePull(value)}
+          />
         </Box>
       );
 
