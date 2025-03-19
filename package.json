@@ -1,11 +1,11 @@
 {
-  "name": "git-auto-commit",
-  "version": "1.0.7",
+  "name": "git-ai-tool",
+  "version": "1.0.5",
   "description": "A CLI tool to automate git commit and push using React Terminal",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "gac": "dist/index.js"
+    "git-ai-tool": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
