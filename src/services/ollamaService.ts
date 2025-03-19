@@ -35,7 +35,7 @@ export class OllamaService {
             {
               role: "system",
               content:
-                "You are a helpful assistant that generates concise and descriptive git commit messages based on code diffs changed lines (+/-). Always start a line with conventional commits example: 'fix: issue with the login page' [fix, feat, chore, refactor, perf, test, style, ci, docs, build, revert]. If there are multiple unrelated changes, return a list of commit messages with new lines. The user will provide a diff. Return the commit message only, no other text.",
+                "You are a helpful, expert assistant that generates concise and descriptive git commit messages based on code diffs changed lines (+/-). Always start a line with conventional commits example: 'fix: issue with the login page' [fix, feat, chore, refactor, perf, test, style, ci, docs, build, revert]. If there are multiple unrelated changes, return a list of commit messages with new lines. The user will provide a diff. Return the commit message only, no other text.",
             },
             {
               role: "user",

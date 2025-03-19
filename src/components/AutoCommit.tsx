@@ -11,8 +11,8 @@ const execCommand = (command: string): string => {
   try {
     return execSync(command, { encoding: "utf-8" });
   } catch (error) {
-    console.error(chalk.red(`❌ Error: ${(error as Error).message}`));
-    process.exit(1);
+    // Instead of exiting the process, throw the error to be handled by the caller
+    throw new Error(`Command failed: ${command}\n${(error as Error).message}`);
   }
 };
 
@@ -326,6 +326,9 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
             setPrUrl(pullRequestUrl);
             reportStep("Pull request", pullRequestUrl);
           }
+
+          setStep("complete");
+          onFinish();
         } catch (err) {
           const errorMessage = (err as Error).message;
 
@@ -347,12 +350,26 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
           setStep("error");
           return;
         }
-
-        setStep("complete");
-        onFinish();
       } catch (err) {
-        setError(`Failed to push: ${(err as Error).message}`);
-        reportStep("Push failed", (err as Error).message);
+        // This outer catch block should never be reached if the inner one works correctly
+        // But we'll keep it as a safety net
+        const errorMessage = (err as Error).message;
+
+        // Check if this is a push rejection error that wasn't caught in the inner try/catch
+        if (
+          errorMessage.includes("rejected") &&
+          (errorMessage.includes("fetch first") ||
+            errorMessage.includes("non-fast-forward") ||
+            errorMessage.includes(
+              "Updates were rejected because the remote contains work"
+            ))
+        ) {
+          setStep("confirmPull");
+          return;
+        }
+
+        setError(`Failed to push: ${errorMessage}`);
+        reportStep("Push failed", errorMessage);
         setStep("error");
       }
     } else {
