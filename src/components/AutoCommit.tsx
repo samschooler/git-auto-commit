@@ -2,10 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
 import SelectInput from "ink-select-input";
-import TextInput from "ink-text-input";
-import axios from "axios";
 import { execSync } from "child_process";
 import chalk from "chalk";
+import { AIService } from "../services/aiServiceFactory.js";
 
 // Helper function to execute shell commands
 const execCommand = (command: string): string => {
@@ -28,44 +27,28 @@ const isGitRepo = (): boolean => {
   }
 };
 
-// Function to generate commit message using OpenAI API
+// Function to generate commit message using AI service
 const generateCommitMessage = async (
+  aiService: AIService,
   gitStatus: string,
   gitDiff: string
 ): Promise<string> => {
-  const response = await axios.post(
-    "https://api.openai.com/v1/chat/completions",
-    {
-      model: "gpt-4-turbo",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an AI that writes clear, professional, and semantic Git commit messages following the conventional commit format. Only return the commit message, nothing else.",
-        },
-        {
-          role: "user",
-          content: `Generate a concise, semantic Git commit message using the conventional commit format (e.g., feat: add new feature, fix: resolve bug, refactor: improve code). The message should be professional, clear, and informative.
+  const diff = `Git status:\n${gitStatus}\n\nGit diff:\n${gitDiff}`;
+  const message = await aiService.generateCommitMessage(diff);
 
-Git status:
-${gitStatus}
+  // Check if the message indicates an error from either service
+  if (
+    message.startsWith("Ollama service had an issue:") ||
+    message.startsWith("OpenAI service had an issue:")
+  ) {
+    // Extract the actual error message
+    const errorMessage = message
+      .replace(/^(Ollama|OpenAI) service had an issue:/, "")
+      .trim();
+    throw new Error(errorMessage);
+  }
 
-Git diff:
-${gitDiff}`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 50,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-
-  return response.data.choices[0].message.content.trim();
+  return message;
 };
 
 // Function to commit changes
@@ -107,11 +90,13 @@ const checkPullRequestStatus = (
 };
 
 interface AutoCommitProps {
+  aiService: AIService;
   onStepComplete: (step: string, details?: string) => void;
   onFinish: () => void;
 }
 
 const AutoCommit: React.FC<AutoCommitProps> = ({
+  aiService,
   onStepComplete,
   onFinish,
 }) => {
@@ -134,6 +119,8 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [initialChecksDone, setInitialChecksDone] = useState<boolean>(false);
+  const [gitStatus, setGitStatus] = useState<string>("");
+  const [gitDiff, setGitDiff] = useState<string>("");
 
   // Use useCallback to memoize these functions to prevent infinite loops
   const reportStep = useCallback(
@@ -143,84 +130,95 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
     [onStepComplete]
   );
 
-  useEffect(() => {
-    const runInitialChecks = async () => {
-      if (initialChecksDone) return;
-
-      try {
-        // Check if we're in a git repo
-        if (!isGitRepo()) {
-          setError("Not inside a Git repository");
-          setStep("error");
-          return;
-        }
-        reportStep("Repository check", "Valid Git repository");
-
-        // Check for unstaged and staged changes
-        const status = execCommand("git status --porcelain");
-
-        // Parse status to separate staged and unstaged changes
-        const lines = status.split("\n").filter((line) => line.trim());
-        const staged = lines
-          .filter((line) => line[0] !== " " && line[0] !== "?")
-          .map((line) => line.substring(3))
-          .join("\n");
-
-        const unstaged = lines
-          .filter((line) => line[0] === " " || line[0] === "?")
-          .map((line) => line.substring(3))
-          .join("\n");
-
-        setStagedChanges(staged);
-        setUnstagedChanges(unstaged);
-
-        if (staged) {
-          reportStep(
-            "Staged changes",
-            `${
-              staged.split("\n").filter((line) => line.trim()).length
-            } files staged`
-          );
-        }
-
-        if (unstaged) {
-          reportStep(
-            "Unstaged changes",
-            `${
-              unstaged.split("\n").filter((line) => line.trim()).length
-            } files not staged`
-          );
-          setStep("stageChanges");
-        } else if (staged) {
-          // If we have staged changes but no unstaged changes, go directly to generating commit message
-          setStep("generating");
-          proceedWithCommit();
-        } else {
-          setError("No changes to commit");
-          setStep("error");
-        }
-
-        // Get branch name for later use
-        const branch = execCommand("git rev-parse --abbrev-ref HEAD").trim();
-        setBranchName(branch);
-        reportStep("Current branch", branch);
-
-        // Get repo URL for later use
-        const url = execCommand("git remote get-url origin")
-          .trim()
-          .replace(/git@github.com:/, "https://github.com/")
-          .replace(/.git$/, "");
-        setRepoUrl(url);
-
-        setInitialChecksDone(true);
-      } catch (err) {
-        setError((err as Error).message);
+  // Function to run initial checks and set up the component state
+  const runInitialChecks = useCallback(async () => {
+    try {
+      // Check if we're in a git repository
+      if (!isGitRepo()) {
         setStep("error");
+        setError("Not inside a Git repository.");
+        return;
       }
-    };
 
+      // Get git status
+      const gitStatus = execCommand("git status --porcelain");
+
+      // If there are no changes, show an error
+      if (!gitStatus.trim()) {
+        setStep("error");
+        setError("No changes to commit.");
+        return;
+      }
+
+      // Parse the status to identify staged and unstaged changes
+      const lines = gitStatus.trim().split("\n");
+      const stagedChanges: string[] = [];
+      const unstagedChanges: string[] = [];
+
+      lines.forEach((line) => {
+        const status = line.substring(0, 2);
+        const file = line.substring(3);
+
+        // First character represents staged changes
+        if (status[0] !== " " && status[0] !== "?") {
+          stagedChanges.push(file);
+        }
+
+        // Second character represents unstaged changes
+        if (status[1] !== " " && status[1] !== "?") {
+          unstagedChanges.push(file);
+        }
+
+        // Untracked files
+        if (status === "??") {
+          unstagedChanges.push(file);
+        }
+      });
+
+      // Set the status information
+      setGitStatus(gitStatus);
+      setStagedChanges(stagedChanges.join("\n"));
+      setUnstagedChanges(unstagedChanges.join("\n"));
+
+      // If there are unstaged changes but no staged changes, prompt to stage them
+      if (unstagedChanges.length > 0) {
+        setStep("stageChanges");
+        return;
+      }
+
+      // If there are staged changes, proceed with commit
+      if (stagedChanges.length > 0) {
+        // Get the diff for staged changes
+        const gitDiff = execCommand("git diff --staged");
+        setGitDiff(gitDiff);
+
+        // Get branch and repo information
+        setBranchName(execCommand("git branch --show-current").trim());
+        setRepoUrl(
+          execCommand(
+            "git remote get-url origin 2>/dev/null || echo 'No remote'"
+          )
+            .trim()
+            .replace(/\.git$/, "")
+        );
+        setDiffStat(execCommand("git diff --staged --stat | tail -n 1").trim());
+
+        // Proceed to generating commit message
+        setStep("generating");
+        proceedWithCommit();
+      } else {
+        // No changes are staged
+        setStep("stageChanges");
+      }
+    } catch (error) {
+      setStep("error");
+      setError((error as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
     runInitialChecks();
-  }, [reportStep, initialChecksDone]);
+  }, [runInitialChecks]);
 
   const proceedWithCommit = async () => {
     const gitStatus = execCommand("git status --short");
@@ -233,7 +231,11 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
     }
 
     try {
-      const message = await generateCommitMessage(gitStatus, gitDiff);
+      const message = await generateCommitMessage(
+        aiService,
+        gitStatus,
+        gitDiff
+      );
       setCommitMessage(message);
       setStep("confirmCommit");
       reportStep("Generated commit message", message);
@@ -246,15 +248,34 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
   const handleStageChanges = async (stageAll: boolean) => {
     if (stageAll) {
       execCommand("git add -A");
-      setStep("generating");
       reportStep("Staged changes", "All files staged");
-
-      await proceedWithCommit();
     } else {
-      setError("Commit aborted");
-      setStep("error");
-      reportStep("Staging aborted", "User chose not to stage changes");
+      reportStep("Staging skipped", "Proceeding with already staged changes");
     }
+
+    // Get the diff for staged changes
+    const gitDiff = execCommand("git diff --staged");
+    setGitDiff(gitDiff);
+
+    // If there are no staged changes after user's decision, abort
+    if (!gitDiff.trim()) {
+      setError("No changes to commit");
+      setStep("error");
+      return;
+    }
+
+    // Get branch and repo information
+    setBranchName(execCommand("git branch --show-current").trim());
+    setRepoUrl(
+      execCommand("git remote get-url origin 2>/dev/null || echo 'No remote'")
+        .trim()
+        .replace(/\.git$/, "")
+    );
+    setDiffStat(execCommand("git diff --staged --stat | tail -n 1").trim());
+
+    // Proceed with commit regardless of staging choice
+    setStep("generating");
+    await proceedWithCommit();
   };
 
   const handleCommit = (confirm: boolean) => {
