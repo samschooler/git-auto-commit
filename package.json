@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "git-auto-commit": "dist/index.js"
+    "gac": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
