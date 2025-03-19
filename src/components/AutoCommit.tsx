@@ -365,31 +365,52 @@ const AutoCommit: React.FC<AutoCommitProps> = ({
   const handlePull = (confirm: boolean) => {
     if (confirm) {
       try {
+        // Set a temporary "pulling" state
+        setStep("pushing"); // Reusing the pushing spinner UI
+        reportStep("Pulling changes", `Branch: ${branchName}`);
+
         // Pull changes from remote
         try {
-          execCommand(`git pull --rebase origin ${branchName}`);
+          // First try to fetch the latest changes
+          execCommand(`git fetch origin ${branchName}`);
+
+          // Then try to rebase
+          try {
+            execCommand(`git pull --rebase origin ${branchName}`);
+          } catch (pullError) {
+            // If rebase fails, try regular merge
+            execCommand(`git pull origin ${branchName}`);
+          }
+
           reportStep("Pulled changes", `Branch: ${branchName}`);
 
           // Try pushing again
-          execCommand(`git push origin ${branchName}`);
-          reportStep("Pushed changes", `Branch: ${branchName}`);
+          try {
+            execCommand(`git push origin ${branchName}`);
+            reportStep("Pushed changes", `Branch: ${branchName}`);
 
-          // Check for PR URL
-          const pullRequestUrl = checkPullRequestStatus(repoUrl, branchName);
-          if (pullRequestUrl) {
-            setPrUrl(pullRequestUrl);
-            reportStep("Pull request", pullRequestUrl);
+            // Check for PR URL
+            const pullRequestUrl = checkPullRequestStatus(repoUrl, branchName);
+            if (pullRequestUrl) {
+              setPrUrl(pullRequestUrl);
+              reportStep("Pull request", pullRequestUrl);
+            }
+
+            setStep("complete");
+            onFinish();
+          } catch (pushError) {
+            // If push still fails after pull
+            const pushErrorMessage = (pushError as Error).message;
+            setError(`Failed to push after pull: ${pushErrorMessage}`);
+            reportStep("Push failed after pull", pushErrorMessage);
+            setStep("error");
           }
-        } catch (err) {
-          const errorMessage = (err as Error).message;
-          setError(`Failed during pull/push: ${errorMessage}`);
-          reportStep("Pull/Push failed", errorMessage);
+        } catch (fetchError) {
+          const fetchErrorMessage = (fetchError as Error).message;
+          setError(`Failed to pull changes: ${fetchErrorMessage}`);
+          reportStep("Pull failed", fetchErrorMessage);
           setStep("error");
-          return;
         }
-
-        setStep("complete");
-        onFinish();
       } catch (err) {
         setError(`Failed: ${(err as Error).message}`);
         setStep("error");
